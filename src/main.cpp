@@ -14,8 +14,8 @@
 #include <WebSocketClient.h>
 #include "secrets.h"
 
-#define NBR_OF_BUTTONS 4
-
+#define NBR_OF_BUTTONS 5
+#define SERIAL_TIMEOUT 10000
 // Modes
 #define WEBSOCKET 1
 #define API 2
@@ -36,8 +36,8 @@ class Button {
 char ssid[] = SECRET_SSID;
 char pass[] = SECRET_PASS;
 
-char serverAddress[] = "192.168.43.249";    // server address
-int port = 8000;
+char serverAddress[] = SERVER_IP;    // server address
+int port = SERVER_PORT;
 
 WiFiClient wifi;
 // WebSocketClient socket = WebSocketClient(wifi, serverAddress, port);
@@ -54,17 +54,22 @@ const int ledPin = LED_BUILTIN;
 #define pending true
 #define switched true
 #define TRIGGER_TYPE CHANGE
-#define debounce 10
+#define debounce 5
 
 bool buttonValues[NBR_OF_BUTTONS] = {};
 bool initComplete = false;
 
-volatile bool interruptStatus[NBR_OF_BUTTONS] = {!pending, !pending, !pending, !pending};
-bool prevBtnValue[NBR_OF_BUTTONS] = {0, 0, 0, 0};
-const int btnPin[] = {2, 3, 9, 10};
+volatile bool interruptStatus[NBR_OF_BUTTONS] = {!pending, !pending, !pending, !pending, !pending};
+bool prevBtnValue[NBR_OF_BUTTONS] = {0, 0, 0, 0, 0};
+
+/**
+ * Interrupt enabled pins on the naon 33 iot
+ *  2, 3, 9, 10, 11, 13, A1, A5, A7
+ */
+const int btnPin[] = { 10, 9, 11, 3, 2 };
 
 
-bool switching_pending[NBR_OF_BUTTONS] = {false, false, false, false};
+bool switching_pending[NBR_OF_BUTTONS] = {false, false, false, false, false};
 long int elapse_timer[NBR_OF_BUTTONS];
 
 void printLine() {
@@ -73,25 +78,17 @@ void printLine() {
 
 void interruptHandler(int buttonId) {
     if(initComplete) {
-        // Serial.println("Btn " + String(buttonId+1));
         if (interruptStatus[buttonId] == !pending) {
             interruptStatus[buttonId] = pending;
-
-            // if (digitalRead(btnPin[buttonId]) == LOW) {
-            // }
         }
     }
 }
 
 
 void btn1InterruptHandler() {
-    digitalWrite(ledPin, digitalRead(btnPin[0]));
-    // Serial.println("Btn 1");
     interruptHandler(0);
 }
 void btn2InterruptHandler() {
-    // Serial.println("Btn 2");
-
     interruptHandler(1);
 }
 void btn3InterruptHandler() {
@@ -99,6 +96,9 @@ void btn3InterruptHandler() {
 }
 void btn4InterruptHandler() {
     interruptHandler(3);
+}
+void btn5InterruptHandler() {
+    interruptHandler(4);
 }
 
 
@@ -165,7 +165,6 @@ void printWiFiStatus()
     Serial.print("SSID: ");
     Serial.println(WiFi.SSID());
 
-    // IP Address
     IPAddress ip = WiFi.localIP();
     Serial.print("IP Address: ");
     Serial.println(ip);
@@ -190,19 +189,30 @@ void connectWiFi()
         // Connect to WPA/WPA2 network:
         status = WiFi.begin(ssid, pass);
     }
+    printWiFiStatus();
 }
 
 void setup()
 {
+    pinMode(ledPin, OUTPUT);
+
+    // Turn on the led to indicate startup
+    digitalWrite(ledPin, HIGH);
+
     Serial.begin(38400);
+    unsigned long start = millis();
+
     while (!Serial)
     {
-        ; // Wait for serial port to connect
+        // Wait for serial port to connect
+
+        if ((millis() - start) > SERIAL_TIMEOUT) {
+            break;
+        }
     }
     printLine();
     Serial.println("** Starting setup... Mode: " + String(MODE));
 
-    pinMode(ledPin, OUTPUT);          // use the LED as an output
     digitalWrite(ledPin, LOW);
 
     for (int i = 0; i < NBR_OF_BUTTONS; i++)
@@ -214,13 +224,18 @@ void setup()
     attachInterrupt(digitalPinToInterrupt(btnPin[1]), btn2InterruptHandler, TRIGGER_TYPE);
     attachInterrupt(digitalPinToInterrupt(btnPin[2]), btn3InterruptHandler, TRIGGER_TYPE);
     attachInterrupt(digitalPinToInterrupt(btnPin[3]), btn4InterruptHandler, TRIGGER_TYPE);
+    attachInterrupt(digitalPinToInterrupt(btnPin[4]), btn5InterruptHandler, TRIGGER_TYPE);
 
     printWifiVersion();
     connectWiFi();
-    printWiFiStatus();
 
     initComplete = true;
     printLine();
+
+    // Turn off led to indicate setup complete
+    digitalWrite(ledPin, LOW);
+
+    Serial.println("Setup complete");
 }
 
 
@@ -241,15 +256,49 @@ void connectWebsocket()
     */
 }
 void postBtnPress(int buttonId, int btnValue ) {
+    unsigned long start = millis();
+
+    digitalWrite(ledPin, HIGH);
+
     String body = "{\"fs_id\":\"" + FS_ID + "\",\"btn_id\":" + String(buttonId) + ",\"state\":" + String(btnValue) + "}";
     Serial.println(body);
+    /*
+    client.connect(serverAddress, port);
+    if (client.connected()) {
+
+        client.println("POST /footswitch/btn-change HTTP/1.1");
+        client.println("Host: " + String(serverAddress) + ":" + String(port));
+        client.println("Connection: close");
+        client.println("Content-Type: application/json");
+        client.print("Content-Length: ");
+        client.println(body.length());
+        client.println();
+        client.println(body);
+
+        while(client.connected()) {
+            if(client.available()) {
+                char c = client.read();
+                Serial.print(c);
+            }
+        }
+        client.stop();
+    }
+    else {
+        Serial.println("Connection failed");
+    }
+    */
 
     String contentType = "application/json";
     client.post("/footswitch/btn-change", contentType, body);
     int statusCode = client.responseStatusCode();
+    client.skipResponseHeaders();
+    Serial.print("Process time: " + String(millis() - start) + " Status-code: " + String(statusCode));
+    
+    start = millis();
+
     String response = client.responseBody();
-    // Serial.println("Response: " + response);
-    Serial.println("Status code: " + String(statusCode));
+    Serial.println(" Body process time: " + String(millis() - start));
+    digitalWrite(ledPin, LOW);
 }
 
 
@@ -258,16 +307,17 @@ void loop()
     if (WiFi.status() != WL_CONNECTED)
     {
         Serial.println("Network disconnected!");
-        connectWiFi();
-    }
-    if (wifi.available()) {
-        Serial.println("Wifi: " + wifi.available());
+        // Attempt to reconnect
+        while (status != WL_CONNECTED) {
+            connectWiFi();
+            delay(5000);
+        }
     }
 
-    if (millis() - lastMillis > 10000) {
-        // Serial.println("Signal strenght: " + String(WiFi.RSSI()));
-        lastMillis = millis();
-    }
+    // if (millis() - lastMillis > 10000) {
+    //     Serial.println("Signal strenght: " + String(WiFi.RSSI()));
+    //     lastMillis = millis();
+    // }
 
     if (MODE == WEBSOCKET) {
 
@@ -309,7 +359,7 @@ void loop()
 
     else if (MODE == API) {
         for (int id = 0; id < NBR_OF_BUTTONS; id++) {
-            bool buttonValue = !digitalRead(btnPin[id]);
+            bool buttonValue = digitalRead(btnPin[id]);
             if (readButton(id, buttonValue) == switched)
             {
                 Serial.println("Button " + String(id) + " value: " + String(buttonValue));
@@ -317,7 +367,4 @@ void loop()
             }
         }
     }
-
-    // Serial.println("--> " + String(digitalRead(btnPin[0])) + " - " + String(digitalRead(btnPin[1])) + " - " + String(digitalRead(btnPin[2])) + " - " + String(digitalRead(btnPin[3])));
-    // delay(50);
 }
