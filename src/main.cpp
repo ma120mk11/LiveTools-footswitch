@@ -54,7 +54,7 @@ const int ledPin = LED_BUILTIN;
 #define pending true
 #define switched true
 #define TRIGGER_TYPE CHANGE
-#define debounce 5
+#define debounce 7
 
 bool buttonValues[NBR_OF_BUTTONS] = {};
 bool initComplete = false;
@@ -63,7 +63,7 @@ volatile bool interruptStatus[NBR_OF_BUTTONS] = {!pending, !pending, !pending, !
 bool prevBtnValue[NBR_OF_BUTTONS] = {0, 0, 0, 0, 0};
 
 /**
- * Interrupt enabled pins on the naon 33 iot
+ * Interrupt enabled pins on the nano 33 iot
  *  2, 3, 9, 10, 11, 13, A1, A5, A7
  */
 const int btnPin[] = { 10, 9, 11, 3, 2 };
