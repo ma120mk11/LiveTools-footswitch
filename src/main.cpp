@@ -3,13 +3,10 @@
     #define LOGGING
 #endif
 
-#define _WEBSOCKETS_LOGLEVEL_ 5
-
 #include <Arduino.h>
 #include <WiFiNINA.h>
 #include <SPI.h>
 #include <ArduinoHttpClient.h>
-// #include <WebSocketsClient.h>
 
 #include <WebSocketClient.h>
 #include "secrets.h"
@@ -17,13 +14,8 @@
 #define NBR_OF_BUTTONS 5
 #define SERIAL_TIMEOUT 10000
 // Modes
-#define WEBSOCKET 1
-#define API 2
-
-#define MODE API
 
 String FS_ID = "arduino-test";
-
 
 class Button {
     public:
@@ -40,7 +32,6 @@ char serverAddress[] = SERVER_IP;    // server address
 int port = SERVER_PORT;
 
 WiFiClient wifi;
-// WebSocketClient socket = WebSocketClient(wifi, serverAddress, port);
 HttpClient client = HttpClient(wifi, serverAddress, port);
 
 int status = WL_IDLE_STATUS;
@@ -211,7 +202,7 @@ void setup()
         }
     }
     printLine();
-    Serial.println("** Starting setup... Mode: " + String(MODE));
+    Serial.println("** Starting setup...");
 
     digitalWrite(ledPin, LOW);
 
@@ -239,22 +230,6 @@ void setup()
 }
 
 
-void connectWebsocket()
-{   /*
-    Serial.println("Starting WebSocket client...");
-    socket.connectionKeepAlive();
-    socket.begin("/footswitch/arduino-test");
-
-    if (socket.connected())
-    {
-        Serial.println("Connected to LiveTools Server (Websocket Mode)");
-
-        socket.beginMessage(TYPE_TEXT);
-        socket.print("{\"type\":\"config\",\"data\":{\"fs_id\":\"" + FS_ID + "\"}}");
-        socket.endMessage();
-    }
-    */
-}
 void postBtnPress(int buttonId, int btnValue ) {
     unsigned long start = millis();
 
@@ -262,31 +237,6 @@ void postBtnPress(int buttonId, int btnValue ) {
 
     String body = "{\"fs_id\":\"" + FS_ID + "\",\"btn_id\":" + String(buttonId) + ",\"state\":" + String(btnValue) + "}";
     Serial.println(body);
-    /*
-    client.connect(serverAddress, port);
-    if (client.connected()) {
-
-        client.println("POST /footswitch/btn-change HTTP/1.1");
-        client.println("Host: " + String(serverAddress) + ":" + String(port));
-        client.println("Connection: close");
-        client.println("Content-Type: application/json");
-        client.print("Content-Length: ");
-        client.println(body.length());
-        client.println();
-        client.println(body);
-
-        while(client.connected()) {
-            if(client.available()) {
-                char c = client.read();
-                Serial.print(c);
-            }
-        }
-        client.stop();
-    }
-    else {
-        Serial.println("Connection failed");
-    }
-    */
 
     String contentType = "application/json";
     client.post("/footswitch/btn-change", contentType, body);
@@ -319,52 +269,12 @@ void loop()
     //     lastMillis = millis();
     // }
 
-    if (MODE == WEBSOCKET) {
-
-        connectWebsocket();
-        /*
-        while (socket.connected())
+    for (int id = 0; id < NBR_OF_BUTTONS; id++) {
+        bool buttonValue = digitalRead(btnPin[id]);
+        if (readButton(id, buttonValue) == switched)
         {
-            // Serial.println("WiFi status: " + String(WiFi.status()));
-            bool buttonValue = !digitalRead(buttonPin);
-            // Serial.print("Btn value: ");
-            // Serial.println(buttonValue);
-
-            if (buttonValue != prevBtnValue)
-            {
-                // Serial.print("Btn value: ");
-                // Serial.println(buttonValue);
-
-                String msg = "{\"type\":\"btn-change\",\"data\":{\"fs_id\":\"" + FS_ID + "\",\"btn_id\":0,\"state\":" + String(buttonValue) + "}}";
-                Serial.println(msg);
-
-                socket.beginMessage(TYPE_TEXT);
-                socket.print(msg);
-                socket.endMessage();
-
-                // check if a message is available to be received
-                // int messageSize = client.parseMessage();
-
-                // if (messageSize > 0) {
-                //   Serial.println("Received a message:");
-                //   Serial.println(client.readString());
-                // }
-            }
-            prevBtnValue = buttonValue;
-            // delay(100);
-        }
-        Serial.println("disconnected");
-        */
-    }
-
-    else if (MODE == API) {
-        for (int id = 0; id < NBR_OF_BUTTONS; id++) {
-            bool buttonValue = digitalRead(btnPin[id]);
-            if (readButton(id, buttonValue) == switched)
-            {
-                Serial.println("Button " + String(id) + " value: " + String(buttonValue));
-                postBtnPress(id, !buttonValue);
-            }
+            Serial.println("Button " + String(id) + " value: " + String(buttonValue));
+            postBtnPress(id, !buttonValue);
         }
     }
 }
