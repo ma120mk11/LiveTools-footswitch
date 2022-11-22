@@ -1,8 +1,3 @@
-
-#ifndef LOGGING
-    #define LOGGING
-#endif
-
 #include <Arduino.h>
 #include <WiFiNINA.h>
 #include <SPI.h>
@@ -13,7 +8,11 @@
 
 #define NBR_OF_BUTTONS 5
 #define SERIAL_TIMEOUT 10000
-// Modes
+
+#define pending true
+#define switched true
+#define TRIGGER_TYPE CHANGE
+#define debounce 7
 
 String FS_ID = "arduino-test";
 
@@ -37,15 +36,7 @@ HttpClient client = HttpClient(wifi, serverAddress, port);
 int status = WL_IDLE_STATUS;
 unsigned long lastMillis = 0;
 
-
-
 const int ledPin = LED_BUILTIN;
-
-
-#define pending true
-#define switched true
-#define TRIGGER_TYPE CHANGE
-#define debounce 7
 
 bool buttonValues[NBR_OF_BUTTONS] = {};
 bool initComplete = false;
@@ -125,19 +116,16 @@ void printWifiVersion()
 {
     // Print firmware version on the module
     String fv = WiFi.firmwareVersion();
-    String latestFv;
     Serial.print("Firmware version installed: ");
     Serial.println(fv);
 
-    latestFv = WIFI_FIRMWARE_LATEST_VERSION;
-
     // Print required firmware version
     Serial.print("Latest firmware version available : ");
-    Serial.println(latestFv);
+    Serial.println(WIFI_FIRMWARE_LATEST_VERSION);
 
     // Check if the latest version is installed
     Serial.println();
-    if (fv >= latestFv)
+    if (fv >= WIFI_FIRMWARE_LATEST_VERSION)
     {
         Serial.println("Check result: PASSED");
     }
