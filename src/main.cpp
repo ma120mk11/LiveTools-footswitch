@@ -2,8 +2,6 @@
 #include <WiFiNINA.h>
 #include <SPI.h>
 #include <ArduinoHttpClient.h>
-
-#include <WebSocketClient.h>
 #include "secrets.h"
 
 #define NBR_OF_BUTTONS 5
@@ -11,17 +9,11 @@
 
 #define pending true
 #define switched true
-#define TRIGGER_TYPE CHANGE
-#define debounce 7
+
+#define TRIGGER_TYPE RISING
+#define debounce 100
 
 String FS_ID = "arduino-test";
-
-class Button {
-    public:
-        Button() {}
-        String id = "test";
-        bool isTriggeredInterrupt = false;
-};
 
 /////// Wifi Settings ///////
 char ssid[] = SECRET_SSID;
@@ -88,29 +80,29 @@ bool readButton(int id, int btnReading) {
 
     if (interruptStatus[id] == pending)
     {
-        // interrupt has been raised on this button so now need to complete
-        // the button read process, ie wait until it has been released
-        // and debounce time elapsed
-        if (btnReading == HIGH)
-        {
+        if (switching_pending[id] == false) {
+            Serial.println("Handling pending interrupt");
+            // Interrupt was raised, waiting to be handled
+
             // switch is pressed, so start/restart wait for button relealse, plus end of debounce process
             switching_pending[id] = true;
-            elapse_timer[id] = millis(); // start elapse timing for debounce checking
+            
+            // start elapse timing for debounce checking
+            elapse_timer[id] = millis();
+            return true;
         }
-        if (switching_pending && btnReading == LOW)
-        {
-            // switch was pressed, now released, so check if debounce time elapsed
-            if (millis() - elapse_timer[id] >= debounce)
-            {
-                // dounce time elapsed, so switch press cycle complete
-                switching_pending[id] = false;         // reset for next button press interrupt cycle
-                interruptStatus[id] = !pending;        // reopen ISR for business now button on/off/debounce cycle complete
-                return switched;                       // advise that switch has been pressed
-            }
+        else if (btnReading == LOW && (millis() - elapse_timer[id] >= debounce)) {
+            Serial.println("Resetting interrupt");
+            // Button has been released, and debounce period over,
+            // we can now enable interrupts again
+            interruptStatus[id] = !pending;
+            switching_pending[id] = false;
+            return false;
         }
     }
-    return !switched; // either no press request or debounce period not elapsed
-} // end of readButton function
+
+    return false; // either no press request or debounce period not elapsed
+}
 
 void printWifiVersion()
 {
@@ -230,12 +222,13 @@ void postBtnPress(int buttonId, int btnValue ) {
     client.post("/footswitch/btn-change", contentType, body);
     int statusCode = client.responseStatusCode();
     client.skipResponseHeaders();
-    Serial.print("Process time: " + String(millis() - start) + " Status-code: " + String(statusCode));
+
+    Serial.println("Process time: " + String(millis() - start) + " ms, status-code: " + String(statusCode));
     
     start = millis();
 
     String response = client.responseBody();
-    Serial.println(" Body process time: " + String(millis() - start));
+    Serial.println("Body process time: " + String(millis() - start) + "ms");
     digitalWrite(ledPin, LOW);
 }
 
@@ -252,17 +245,13 @@ void loop()
         }
     }
 
-    // if (millis() - lastMillis > 10000) {
-    //     Serial.println("Signal strenght: " + String(WiFi.RSSI()));
-    //     lastMillis = millis();
-    // }
-
     for (int id = 0; id < NBR_OF_BUTTONS; id++) {
         bool buttonValue = digitalRead(btnPin[id]);
-        if (readButton(id, buttonValue) == switched)
-        {
+
+        if (readButton(id, buttonValue)) {
+            printLine();
             Serial.println("Button " + String(id) + " value: " + String(buttonValue));
-            postBtnPress(id, !buttonValue);
+            postBtnPress(id, 1);
         }
     }
 }
